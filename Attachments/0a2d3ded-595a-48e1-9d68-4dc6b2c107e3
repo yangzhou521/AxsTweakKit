@@ -1,0 +1,13 @@
+This is the key fix because:
+• -lsubstrate resolves only when the substrate library exists in the normal link path
+• in this roothide fork, the actual library is a framework under vendor/lib
+• substrate.h is also not in the default include tree; it is under vendor/include
+Why this matters for the failing action:
+• The matrix job is running both roothide and rootless
+• The core problem is the same across both: the linker is using the wrong substrate path for the roothide/Theos checkout
+• once you set the framework + include flags correctly, the build step can resolve MSHookMessageEx and the rest of the substrate API
+So the actual solution is:
+• do not rely on plain -lsubstrate
+• add the roothide vendor/include and vendor/lib/CydiaSubstrate.framework path
+• keep the workflow env aligned with the build script
+This matches the repo’s intended fix already noted in the workflow comments and reflected in the script.

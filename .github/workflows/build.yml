@@ -99,9 +99,23 @@ jobs:
 
       - name: Build Package
         run: |
-          sh scripts/build.sh
-          echo "=== .deb files ==="
-          find ./packages -name "*.deb" -type f
+          set -o pipefail
+          if sh scripts/build.sh > /tmp/build.log 2>&1; then
+            cat /tmp/build.log
+            echo "=== .deb files ==="
+            find ./packages -name "*.deb" -type f
+          else
+            cat /tmp/build.log
+            # The job log needs a login to read; an annotation on the check run
+            # is public, so the failure is readable from the repository API.
+            grep -E "error:|error |not found|undefined|ld: |clang: |fatal|No such file" /tmp/build.log \
+              | head -n 4 > /tmp/errs.txt || true
+            tail -n 5 /tmp/build.log >> /tmp/errs.txt
+            while IFS= read -r line; do
+              echo "::error title=build.sh::$line"
+            done < /tmp/errs.txt
+            exit 1
+          fi
 
       - name: Verify slices and package
         run: |

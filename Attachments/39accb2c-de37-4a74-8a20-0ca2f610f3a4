@@ -1,0 +1,16 @@
+我看了你发的运行日志，找到了失败的核心线索：失败发生在 Build Package 这一步，进程以退出码 1 结束。不过完整的报错日志被 GitHub 截断了。
+
+结合 Theos 打包的常见问题，大概率是下面两个原因之一，可以按顺序让 AI 助手帮你排查：
+
+🎯 最可能的原因与修复方向
+
+· 打包工具链问题（可能性最大）：日志里 Install build tools 这一步可能缺了打包工具，比如 dpkg、fakeroot。尤其是使用 roothide 方案时，必须用特定的工具打包，否则就会报错。
+· Makefile 或路径配置错误：可能是 Makefile 里的 TWEAK_FILES 路径写错了，或者 Theos 的 SDK 路径没配置对，导致 make 找不到目标文件。
+
+📋 建议的排查与操作
+
+1. 尝试获取完整日志：在 Actions 运行页面，点击右上角的 ... 菜单，选择 Download log archive 下载日志压缩包，解压后用文本编辑器打开，搜索 Error 或 error: 就能找到最详细的报错。
+2. 将关键信息发给 AI：把报错日志（或 Build Package 步骤附近的红字）发给 AI 助手，并明确告诉它：“构建在 Build Package 步骤失败，退出码 1，请检查 Makefile 中的打包配置以及工作流是否缺少 dpkg、fakeroot 等依赖。”
+3. 检查工作流权限：如果 AI 调整后依然报权限错误，可以检查仓库的 Settings → Actions → General → Workflow permissions，确保勾选了 Read and write permissions 并保存。
+
+让 AI 助手根据这些方向去修改 .github/workflows/build.yml 或 Makefile，修好后再重新推送，应该就能跑通了。

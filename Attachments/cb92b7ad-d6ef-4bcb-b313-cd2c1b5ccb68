@@ -1,0 +1,14 @@
+这个 roothide 构建任务同样失败了，核心原因还是在 Build Package（打包）环节，进程以退出码 1 结束。
+
+线上日志的关键部分被 GitHub 截断了，但结合 you 的工程配置，大概率是打包工具链或路径配置出了岔子。
+
+🎯 最可能的两个原因
+
+· 打包工具链缺失：Build Package 阶段可能缺少 dpkg、fakeroot 等必要工具，或者版本不兼容。
+· Makefile 或路径配置错误：Makefile 中的 THEOS_PACKAGE_SCHEME 设置可能不完整，或者 THEOS_PACKAGE_DIR 等路径未正确定义，导致 make 找不到目标文件。
+
+📋 下一步排查建议
+
+1. 获取完整日志（最关键的一步）：在失败任务页面右上角 ... 菜单中选 Download log archive，解压后搜索 error: 或 Error:，找到 Build Package 步骤附近的真实报错。
+2. 检查工作流配置：确保 build.yml 中分别使用了 THEOS_PACKAGE_SCHEME=rootless 和 THEOS_PACKAGE_SCHEME=roothide 来打包。
+3. 反馈给 AI 修复：将完整报错日志发给 AI，并提示它检查 Makefile 的打包配置，以及工作流是否安装了 dpkg、fakeroot 等依赖。
