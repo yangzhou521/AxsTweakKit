@@ -41,22 +41,26 @@ is uncompiled and unverified.
 - `.github/workflows/build.yml` — cloud build for this device: runs
   `scripts/build.sh` for roothide and rootless on a macOS runner (roothide/theos
   headers + theos/sdks iPhoneOS16.5, no Theos build system), uploads artifacts,
-  attaches both debs to a v1.0.0 Release on manual runs. Two failed manual runs
-  so far, both fixed and still unverified:
-  - run 2: both legs failed at Build Package — `-lsubstrate` cannot resolve,
-    because `$THEOS/lib` has no substrate and `vendor/lib/libsubstrate.tbd` is
-    only a one-line pointer. Fixed to link `-Ftheos/vendor/lib -framework
-    CydiaSubstrate` and to copy the fork's dyld flags (roothide install_name;
-    rootless rpaths, on dylib and bundle).
-  - run 3: compile passed, link failed for arm64 on `_CGRectGetWidth`,
-    `_CGRectGetHeight`, `_CGRectZero` from `Prefs/AxsTweakKitSliderCell.m`.
-    The headerless iPhoneOS16.5 SDK's `UIKit.tbd` does not reexport
-    CoreGraphics, while Foundation still reexports CoreFoundation (the dylib's
-    `CFNotificationCenter*` linked fine), so only CoreGraphics is listed by
-    hand: `$FRAMEWORKS` in `scripts/build.sh` and `frameworks` in
-    `Docs/apelin-project.tweak.json`, on both products. Any further CGRect/CG
-    use needs it too; do not drop it to "fix" a link. Unverified until a run
-    with this tree passes.
+  attaches both debs to a v1.0.0 Release on manual runs. Run history:
+  - runs 1–6 (commits 547f461, d0d32e6, a78a661, 979469b) all failed at
+    Build Package: first `-lsubstrate` cannot resolve, then, once substrate
+    was fixed, `_CGRectGetWidth` / `_CGRectGetHeight` / `_CGRectZero`
+    undefined — the headerless SDK's `UIKit.tbd` does not reexport
+    CoreGraphics (Foundation still reexports CoreFoundation, so the dylib's
+    `CFNotificationCenter*` was fine).
+  - run 7 (ec684ef, 2026-10-28) is GREEN on both matrix legs: the fixes are
+    `-Ftheos/vendor/lib -framework CydiaSubstrate` for substrate and
+    `-framework CoreGraphics` on both products (`$FRAMEWORKS` in
+    `scripts/build.sh`, `frameworks` in `Docs/apelin-project.tweak.json`).
+    Do not drop CoreGraphics to "fix" a link; any further CGRect/CG use needs
+    it too.
+  - No Release exists yet: the release job runs only on `workflow_dispatch`,
+    so publishing v1.0.0 takes one manual "Run workflow" on master. A push
+    run only builds (artifacts are downloadable, Release is not created).
+  - Re-running an old failed run rebuilds that run's old commit and fails
+    identically. Always "Run workflow" on master instead. The Build Package
+    step now prints the commit and a sha256 of `scripts/build.sh`, so a log
+    says which tree it came from.
 
 ## Invariants
 
