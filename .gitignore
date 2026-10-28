@@ -6,3 +6,6 @@ Builds/
 
 # Apelin's own manifest: it holds projectID/environment, not project sources.
 apelin-project.json
+
+# Pasted CI logs and screenshots from the chat, not sources.
+Attachments/

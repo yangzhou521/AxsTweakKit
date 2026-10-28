@@ -41,13 +41,28 @@ is uncompiled and unverified.
 - `.github/workflows/build.yml` — cloud build for this device: runs
   `scripts/build.sh` for roothide and rootless on a macOS runner (roothide/theos
   headers + theos/sdks iPhoneOS16.5, no Theos build system), uploads artifacts,
-  attaches both debs to a v1.0.0 Release on manual runs. Ran once manually
-  (run 2, 2026-10-28): both matrix legs failed at Build Package — `-lsubstrate`
-  cannot resolve, because `$THEOS/lib` has no substrate and
-  `vendor/lib/libsubstrate.tbd` is only a one-line pointer. Fixed in
-  `scripts/build.sh` to link `-Ftheos/vendor/lib -framework CydiaSubstrate` and
-  to copy the fork's dyld flags (roothide install_name; rootless rpaths, on
-  dylib and bundle). Unverified — re-run the workflow before trusting it.
+  attaches both debs to a v1.0.0 Release on manual runs. Two failed manual runs
+  so far, both fixed and still unverified:
+  - run 2: both legs failed at Build Package — `-lsubstrate` cannot resolve,
+    because `$THEOS/lib` has no substrate and `vendor/lib/libsubstrate.tbd` is
+    only a one-line pointer. Fixed to link `-Ftheos/vendor/lib -framework
+    CydiaSubstrate` and to copy the fork's dyld flags (roothide install_name;
+    rootless rpaths, on dylib and bundle).
+  - run 3: compile passed, link failed on `_CGRectGetWidth`, `_CGRectGetHeight`,
+    `_CGRectZero` from `Prefs/AxsTweakKitSliderCell.m`. The headerless
+    iPhoneOS16.5 SDK's `UIKit.tbd` does not reexport CoreGraphics, so both
+    products now list `-framework CoreGraphics` (`$FRAMEWORKS` in
+    `scripts/build.sh`, `frameworks` in `Docs/apelin-project.tweak.json`).
+    Any further CGRect/CG use needs it too; do not drop it to "fix" a link.
+- Run 3 (2026-10-28) got past substrate and failed in the bundle's link:
+  `CGRectGetWidth` / `CGRectGetHeight` / `CGRectZero` undefined for arm64
+  (`Prefs/AxsTweakKitSliderCell.m`). The headerless iPhoneOS16.5 SDK's
+  UIKit.tbd does not reexport CoreGraphics, and Foundation does still reexport
+  CoreFoundation (the dylib's `CFNotificationCenter*` linked fine), so only
+  CoreGraphics has to be listed by hand. `scripts/build.sh` now links
+  `-framework CoreGraphics` for both products (`$FRAMEWORKS`), and
+  `Docs/apelin-project.tweak.json` lists it in both products' `frameworks`.
+  Unverified until a run with this tree passes.
 
 ## Invariants
 

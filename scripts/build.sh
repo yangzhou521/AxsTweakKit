@@ -110,6 +110,13 @@ if [ -z "$PREFS_LDFLAGS" ] && [ -n "${SDKROOT:-}" ] &&
   PREFS_LDFLAGS="-F$SDKROOT/System/Library/PrivateFrameworks"
 fi
 
+# CoreGraphics is listed by hand: the headerless SDK these builds use has a
+# UIKit.tbd that reexports only UIKitCore/FileProvider/… and NOT CoreGraphics,
+# so CGRectGetWidth/CGRectGetHeight/CGRectZero come out undefined at link time
+# (run #3, both matrix legs, AxsTweakKitSliderCell.m). The dylib links it too so
+# a future CGRect in Sources/ does not hit the same wall.
+FRAMEWORKS="-framework Foundation -framework UIKit -framework CoreGraphics"
+
 SHARED_FLAGS="-fobjc-arc -fvisibility=hidden -miphoneos-version-min=$MIN_IOS \
 -I Shared -I Prefs $SYSROOT_FLAG $OPT \
 -DAPELIN_PACKAGE_ID=\"$PACKAGE_ID\" -DAPELIN_BUILD_ID=\"$BUILD_ID\" \
@@ -126,7 +133,7 @@ for arch in $ARCHS; do
   # The tweak: a dylib, injected by substrate into SpringBoard only.
   # shellcheck disable=SC2086
   clang -dynamiclib -arch "$arch" $SHARED_FLAGS $SUBSTRATE_CFLAGS \
-      -framework Foundation -framework UIKit \
+      $FRAMEWORKS \
       $SUBSTRATE_LDFLAGS $TWEAK_LINK_FLAGS \
       Sources/*.m \
       -o "build/thin/$arch/$TWEAK_NAME.dylib"
@@ -134,7 +141,7 @@ for arch in $ARCHS; do
   # The pane: a loadable bundle whose principal class is the list controller.
   # shellcheck disable=SC2086
   clang -bundle -arch "$arch" $SHARED_FLAGS $SUBSTRATE_CFLAGS $PREFS_LDFLAGS \
-      -framework Foundation -framework UIKit -framework Preferences \
+      $FRAMEWORKS -framework Preferences \
       $BUNDLE_LINK_FLAGS \
       Prefs/*.m \
       -o "build/thin/$arch/$PREFS_NAME"

@@ -24,7 +24,7 @@
       "sources": ["Sources/*.m"],
       "headerSearchPaths": ["Shared"],
       "objcARC": true,
-      "frameworks": ["Foundation", "UIKit"],
+      "frameworks": ["Foundation", "UIKit", "CoreGraphics"],
       "libraries": ["substrate"],
       "extensionSupport": [
         {"extension": "wiki.qaq.apelin.dev.tweak", "component": "substrate"}
@@ -37,7 +37,7 @@
       "sources": ["Prefs/*.m"],
       "headerSearchPaths": ["Shared"],
       "objcARC": true,
-      "frameworks": ["Foundation", "UIKit", "Preferences"],
+      "frameworks": ["Foundation", "UIKit", "CoreGraphics", "Preferences"],
       "infoPlist": "Prefs/Resources/Info.plist",
       "resources": ["Prefs/Resources/AxsTweakKitRoot.plist"],
       "extensionSupport": [

@@ -5,11 +5,16 @@
 # Theos, no Logos) on a macOS runner for roothide AND rootless, and on manual
 # runs attaches both debs to a GitHub Release.
 #
-# NOT VERIFIED: nothing in this file had run on a runner until 2026-10-28,
-# when run #2 failed at Build Package for both matrix legs. The failure was
-# the substrate link: the layout inside roothide/theos was re-checked against
-# the repository and corrected (substrate = CydiaSubstrate.framework in the
-# vendor/lib submodule). The fix below has not yet produced a passing run.
+# NOT VERIFIED: nothing in this file had run on a runner until 2026-10-28.
+#   run #2 — both legs failed at Build Package: `-lsubstrate` cannot resolve
+#            ($THEOS/lib holds no substrate). Fixed to
+#            -F$THEOS/vendor/lib -framework CydiaSubstrate.
+#   run #3 — both legs got past the compile and failed at link with undefined
+#            CGRectGetWidth/_Height/_Zero from AxsTweakKitSliderCell.m: the
+#            headerless iPhoneOS16.5 SDK's UIKit.tbd does not reexport
+#            CoreGraphics. Fixed in scripts/build.sh by listing
+#            -framework CoreGraphics on both products.
+# Neither fix has produced a passing run yet.
 #
 # Version: the package version is static 1.0.0, kept in step with
 # scripts/build.sh and Docs/apelin-project.tweak.json. Bump all three together
