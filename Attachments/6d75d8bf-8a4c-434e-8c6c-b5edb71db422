@@ -1,0 +1,10 @@
+The failing job is caused by the wrong substrate linker setup for the roothide/Theos fork, not by the packaging step itself.
+What the workflow and source say:
+• In .github/workflows/build.yml, the job explicitly documents the issue:
+• $THEOS/include is empty
+• $THEOS/lib has no substrate
+• the real substrate lives in theos/vendor/include and theos/vendor/lib/CydiaSubstrate.framework
+• The build step is Build Package, and the failure is -lsubstrate/substrate link resolution.
+• scripts/build.sh also contains the fix: it checks for theos/vendor/lib/CydiaSubstrate.framework and switches to -Ftheos/vendor/lib -framework CydiaSubstrate.
+The fix is to link against the roothide vendor layout instead of the default Theos layout.
+Use this in the workflow matrix job:

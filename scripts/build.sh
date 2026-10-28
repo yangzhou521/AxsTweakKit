@@ -15,7 +15,10 @@
 #   APELIN_BUILD_ID       the marker id compiled in (default: a timestamp)
 #   APELIN_CONFIGURATION  debug (default) or release
 #   SDKROOT               used as -isysroot when set
-#   SUBSTRATE_CFLAGS      extra flags that put substrate.h on the include path
+#   SUBSTRATE_CFLAGS      extra include flags: substrate.h and the private
+#                         framework headers (Preferences, …). The SDK these
+#                         builds use is headerless for private frameworks, so
+#                         both products need this path.
 #   SUBSTRATE_LDFLAGS     how substrate is linked (default -lsubstrate)
 #   PREFS_LDFLAGS         overrides the private-framework search path
 #
@@ -78,6 +81,18 @@ if [ "$CONFIGURATION" = "release" ]; then
 fi
 
 SUBSTRATE_CFLAGS=${SUBSTRATE_CFLAGS:-}
+# A headerless SDK (theos/sdks) has no Headers inside PrivateFrameworks: the
+# private headers (Preferences/PSListController.h) and substrate.h come from
+# the theos checkout's vendor/include, while $THEOS/include is empty. The
+# workflow passes that path in SUBSTRATE_CFLAGS; a local run gets it here, so
+# the script does not depend on the workflow passing it.
+if [ -z "$SUBSTRATE_CFLAGS" ]; then
+  for inc in theos/vendor/include vendor/include; do
+    if [ -d "$inc" ]; then
+      SUBSTRATE_CFLAGS="$SUBSTRATE_CFLAGS -I$inc"
+    fi
+  done
+fi
 # Substrate for the roothide fork of Theos is the prebuilt
 # CydiaSubstrate.framework in the vendor/lib submodule (roothide/lib).
 # $THEOS/lib has no substrate, and vendor/lib/libsubstrate.tbd is only a
@@ -118,7 +133,7 @@ for arch in $ARCHS; do
 
   # The pane: a loadable bundle whose principal class is the list controller.
   # shellcheck disable=SC2086
-  clang -bundle -arch "$arch" $SHARED_FLAGS $PREFS_LDFLAGS \
+  clang -bundle -arch "$arch" $SHARED_FLAGS $SUBSTRATE_CFLAGS $PREFS_LDFLAGS \
       -framework Foundation -framework UIKit -framework Preferences \
       $BUNDLE_LINK_FLAGS \
       Prefs/*.m \

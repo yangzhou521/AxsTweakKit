@@ -1,0 +1,54 @@
+2026-10-28T03:17:08.5751290Z ##[group]Run set -o pipefail
+2026-10-28T03:17:08.5751650Z [36;1mset -o pipefail[0m
+2026-10-28T03:17:08.5752150Z [36;1mif sh scripts/build.sh > /tmp/build.log 2>&1; then[0m
+2026-10-28T03:17:08.5752510Z [36;1m  cat /tmp/build.log[0m
+2026-10-28T03:17:08.5752730Z [36;1m  echo "=== .deb files ==="[0m
+2026-10-28T03:17:08.5753050Z [36;1m  find ./packages -name "*.deb" -type f[0m
+2026-10-28T03:17:08.5753380Z [36;1melse[0m
+2026-10-28T03:17:08.5753560Z [36;1m  cat /tmp/build.log[0m
+2026-10-28T03:17:08.5753910Z [36;1m  # The job log needs a login to read; an annotation on the check run[0m
+2026-10-28T03:17:08.5754260Z [36;1m  # is public, so the failure is readable from the repository API.[0m
+2026-10-28T03:17:08.5754720Z [36;1m  grep -E "error:|error |not found|undefined|ld: |clang: |fatal|No such file" /tmp/build.log \[0m
+2026-10-28T03:17:08.5755080Z [36;1m    | head -n 4 > /tmp/errs.txt || true[0m
+2026-10-28T03:17:08.5755430Z [36;1m  tail -n 5 /tmp/build.log >> /tmp/errs.txt[0m
+2026-10-28T03:17:08.5755780Z [36;1m  while IFS= read -r line; do[0m
+2026-10-28T03:17:08.5756070Z [36;1m    echo "::error title=build.sh::$line"[0m
+2026-10-28T03:17:08.5756390Z [36;1m  done < /tmp/errs.txt[0m
+2026-10-28T03:17:08.5756600Z [36;1m  exit 1[0m
+2026-10-28T03:17:08.5756850Z [36;1mfi[0m
+2026-10-28T03:17:08.5808550Z shell: /bin/bash -e {0}
+2026-10-28T03:17:08.5808710Z env:
+2026-10-28T03:17:08.5808910Z   HOMEBREW_NO_AUTO_UPDATE: 1
+2026-10-28T03:17:08.5809240Z   HOMEBREW_NO_INSTALLED_DEPENDENTS_CHECK: 1
+2026-10-28T03:17:08.5809580Z   THEOS: /Users/runner/work/AxsTweakKit/AxsTweakKit/theos
+2026-10-28T03:17:08.5809970Z   SDKROOT: /Users/runner/work/AxsTweakKit/AxsTweakKit/theos/sdks/iPhoneOS16.5.sdk
+2026-10-28T03:17:08.5810290Z   APELIN_BOOTSTRAP: rootless
+2026-10-28T03:17:08.5810600Z   APELIN_CONFIGURATION: release
+2026-10-28T03:17:08.5810830Z   APELIN_PACKAGE_DIR: packages
+2026-10-28T03:17:08.5811240Z   SUBSTRATE_CFLAGS: -I/Users/runner/work/AxsTweakKit/AxsTweakKit/theos/vendor/include
+2026-10-28T03:17:08.5811800Z   SUBSTRATE_LDFLAGS: -F/Users/runner/work/AxsTweakKit/AxsTweakKit/theos/vendor/lib -framework CydiaSubstrate
+2026-10-28T03:17:08.5812210Z   MD_APPLE_SDK_ROOT: /Applications/Xcode_15.4.app
+2026-10-28T03:17:08.5812460Z ##[endgroup]
+2026-10-28T03:17:10.2092640Z build.sh: rootless / release / 20261028031708
+2026-10-28T03:17:10.2093130Z In file included from Prefs/AxsTweakKitPrefsRootListController.m:1:
+2026-10-28T03:17:10.2093740Z Prefs/AxsTweakKitPrefsRootListController.h:3:9: fatal error: 'Preferences/PSListController.h' file not found
+2026-10-28T03:17:10.2094220Z #import <Preferences/PSListController.h>
+2026-10-28T03:17:10.2094460Z         ^~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
+2026-10-28T03:17:10.2095300Z Prefs/AxsTweakKitPrefsRootListController.h:3:9: note: did not find header 'PSListController.h' in framework 'Preferences' (loaded from '/Users/runner/work/AxsTweakKit/AxsTweakKit/theos/sdks/iPhoneOS16.5.sdk/System/Library/PrivateFrameworks')
+2026-10-28T03:17:10.2096190Z 1 error generated.
+2026-10-28T03:17:10.2096500Z In file included from Prefs/AxsTweakKitSliderCell.m:1:
+2026-10-28T03:17:10.2096970Z Prefs/AxsTweakKitSliderCell.h:3:9: fatal error: 'Preferences/PSTableCell.h' file not found
+2026-10-28T03:17:10.2097340Z #import <Preferences/PSTableCell.h>
+2026-10-28T03:17:10.2097560Z         ^~~~~~~~~~~~~~~~~~~~~~~~~~~
+2026-10-28T03:17:10.2098270Z Prefs/AxsTweakKitSliderCell.h:3:9: note: did not find header 'PSTableCell.h' in framework 'Preferences' (loaded from '/Users/runner/work/AxsTweakKit/AxsTweakKit/theos/sdks/iPhoneOS16.5.sdk/System/Library/PrivateFrameworks')
+2026-10-28T03:17:10.2098990Z 1 error generated.
+2026-10-28T03:17:10.2403370Z ##[error]Prefs/AxsTweakKitPrefsRootListController.h:3:9: fatal error: 'Preferences/PSListController.h' file not found
+2026-10-28T03:17:10.2404940Z ##[error]1 error generated.
+2026-10-28T03:17:10.2406110Z ##[error]Prefs/AxsTweakKitSliderCell.h:3:9: fatal error: 'Preferences/PSTableCell.h' file not found
+2026-10-28T03:17:10.2407140Z ##[error]1 error generated.
+2026-10-28T03:17:10.2408780Z ##[error]Prefs/AxsTweakKitSliderCell.h:3:9: fatal error: 'Preferences/PSTableCell.h' file not found
+2026-10-28T03:17:10.2410080Z ##[error]#import <Preferences/PSTableCell.h>
+2026-10-28T03:17:10.2410960Z ##[error]        ^~~~~~~~~~~~~~~~~~~~~~~~~~~
+2026-10-28T03:17:10.2413040Z ##[error]Prefs/AxsTweakKitSliderCell.h:3:9: note: did not find header 'PSTableCell.h' in framework 'Preferences' (loaded from '/Users/runner/work/AxsTweakKit/AxsTweakKit/theos/sdks/iPhoneOS16.5.sdk/System/Library/PrivateFrameworks')
+2026-10-28T03:17:10.2414540Z ##[error]1 error generated.
+2026-10-28T03:17:10.2442370Z ##[error]Process completed with exit code 1.
