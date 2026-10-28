@@ -5,11 +5,11 @@
 # Theos, no Logos) on a macOS runner for roothide AND rootless, and on manual
 # runs attaches both debs to a GitHub Release.
 #
-# NOT VERIFIED: nothing in this file has run on a runner yet. In particular
-# the exact header/lib layout inside roothide/theos (substrate.h, the iOS
-# headers under include/ and vendor/include/, libsubstrate under lib/) is
-# assumed from the theos tree's own conventions and the axs-ios-tweaks skill's
-# doctor checks; the first real run's logs will confirm or correct it.
+# NOT VERIFIED: nothing in this file had run on a runner until 2026-10-28,
+# when run #2 failed at Build Package for both matrix legs. The failure was
+# the substrate link: the layout inside roothide/theos was re-checked against
+# the repository and corrected (substrate = CydiaSubstrate.framework in the
+# vendor/lib submodule). The fix below has not yet produced a passing run.
 #
 # Version: the package version is static 1.0.0, kept in step with
 # scripts/build.sh and Docs/apelin-project.tweak.json. Bump all three together
@@ -49,13 +49,18 @@ jobs:
       APELIN_BOOTSTRAP: ${{ matrix.bootstrap }}
       APELIN_CONFIGURATION: release
       APELIN_PACKAGE_DIR: packages
-      # The tweak dylib and the preference bundle share one header story:
-      #   - substrate.h and roothide.h/rootless.h live in $THEOS/include;
-      #   - the full iOS header set (public + private, incl. Preferences,
-      #     which no Xcode SDK ships) lives in $THEOS/vendor/include;
-      #   - libsubstrate is prebuilt in $THEOS/lib.
-      SUBSTRATE_CFLAGS: -I${{ github.workspace }}/theos/include -I${{ github.workspace }}/theos/vendor/include
-      SUBSTRATE_LDFLAGS: -L${{ github.workspace }}/theos/lib -lsubstrate
+      # The tweak dylib and the preference bundle share one header story,
+      # checked against roothide/theos master after run #2 failed:
+      #   - the full iOS header set (public + private, incl. substrate.h,
+      #     Preferences, SpringBoard, …) lives in $THEOS/vendor/include
+      #     (submodule roothide/headers). $THEOS/include is empty.
+      #   - substrate is the prebuilt CydiaSubstrate.framework in
+      #     $THEOS/vendor/lib (submodule roothide/lib): its tbd exports
+      #     MSHookMessageEx & co for armv7/armv7s/arm64/arm64e.
+      #     $THEOS/lib has no substrate, and vendor/lib/libsubstrate.tbd is
+      #     only a one-line pointer to the framework's tbd.
+      SUBSTRATE_CFLAGS: -I${{ github.workspace }}/theos/vendor/include
+      SUBSTRATE_LDFLAGS: -F${{ github.workspace }}/theos/vendor/lib -framework CydiaSubstrate
 
     steps:
       - name: Setup Xcode

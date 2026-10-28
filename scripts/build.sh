@@ -43,12 +43,22 @@ case "$BOOTSTRAP" in
     BOOTSTRAP_DEFINE=APELIN_BOOTSTRAP_ROOTHIDE
     PREFIX=""
     ARCH=iphoneos-arm64e
+    # The roothide mod stamps every library with a .jbroot-relative install
+    # name (vendor/mod/roothide/instance/library.mk), so dyld finds the
+    # dylib's dependencies inside the jbroot.
+    TWEAK_LINK_FLAGS="-install_name @loader_path/.jbroot$PREFIX/Library/MobileSubstrate/DynamicLibraries/$TWEAK_NAME.dylib"
+    BUNDLE_LINK_FLAGS=""
     ;;
   rootless)
     ARCHS="arm64 arm64e"
     BOOTSTRAP_DEFINE=APELIN_BOOTSTRAP_ROOTLESS
     PREFIX=/var/jb
     ARCH=iphoneos-arm64
+    # The rootless mod adds both rpath generations
+    # (vendor/mod/rootless/instance/rules.mk) so libsubstrate under the
+    # bootstrap's Library/Frameworks and usr/lib resolves.
+    TWEAK_LINK_FLAGS="-rpath $PREFIX/Library/Frameworks -rpath $PREFIX/usr/lib -rpath @loader_path/.jbroot/Library/Frameworks -rpath @loader_path/.jbroot/usr/lib"
+    BUNDLE_LINK_FLAGS="$TWEAK_LINK_FLAGS"
     ;;
   *)
     echo "build.sh: unknown APELIN_BOOTSTRAP '$BOOTSTRAP'" >&2
@@ -68,6 +78,15 @@ if [ "$CONFIGURATION" = "release" ]; then
 fi
 
 SUBSTRATE_CFLAGS=${SUBSTRATE_CFLAGS:-}
+# Substrate for the roothide fork of Theos is the prebuilt
+# CydiaSubstrate.framework in the vendor/lib submodule (roothide/lib).
+# $THEOS/lib has no substrate, and vendor/lib/libsubstrate.tbd is only a
+# one-line pointer to the framework's tbd, so -lsubstrate cannot resolve
+# there. The -F/-framework form is what this repo's build needs; fall back
+# to plain -lsubstrate for other toolchains.
+if [ -z "${SUBSTRATE_LDFLAGS:-}" ] && [ -d "theos/vendor/lib/CydiaSubstrate.framework" ]; then
+  SUBSTRATE_LDFLAGS="-Ftheos/vendor/lib -framework CydiaSubstrate"
+fi
 SUBSTRATE_LDFLAGS=${SUBSTRATE_LDFLAGS:--lsubstrate}
 
 PREFS_LDFLAGS=${PREFS_LDFLAGS:-}
@@ -93,7 +112,7 @@ for arch in $ARCHS; do
   # shellcheck disable=SC2086
   clang -dynamiclib -arch "$arch" $SHARED_FLAGS $SUBSTRATE_CFLAGS \
       -framework Foundation -framework UIKit \
-      $SUBSTRATE_LDFLAGS \
+      $SUBSTRATE_LDFLAGS $TWEAK_LINK_FLAGS \
       Sources/*.m \
       -o "build/thin/$arch/$TWEAK_NAME.dylib"
 
@@ -101,6 +120,7 @@ for arch in $ARCHS; do
   # shellcheck disable=SC2086
   clang -bundle -arch "$arch" $SHARED_FLAGS $PREFS_LDFLAGS \
       -framework Foundation -framework UIKit -framework Preferences \
+      $BUNDLE_LINK_FLAGS \
       Prefs/*.m \
       -o "build/thin/$arch/$PREFS_NAME"
 done

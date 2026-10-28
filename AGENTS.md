@@ -41,7 +41,13 @@ is uncompiled and unverified.
 - `.github/workflows/build.yml` — cloud build for this device: runs
   `scripts/build.sh` for roothide and rootless on a macOS runner (roothide/theos
   headers + theos/sdks iPhoneOS16.5, no Theos build system), uploads artifacts,
-  attaches both debs to a v1.0.0 Release on manual runs. Unverified — never run.
+  attaches both debs to a v1.0.0 Release on manual runs. Ran once manually
+  (run 2, 2026-10-28): both matrix legs failed at Build Package — `-lsubstrate`
+  cannot resolve, because `$THEOS/lib` has no substrate and
+  `vendor/lib/libsubstrate.tbd` is only a one-line pointer. Fixed in
+  `scripts/build.sh` to link `-Ftheos/vendor/lib -framework CydiaSubstrate` and
+  to copy the fork's dyld flags (roothide install_name; rootless rpaths, on
+  dylib and bundle). Unverified — re-run the workflow before trusting it.
 
 ## Invariants
 
