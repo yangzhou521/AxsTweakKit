@@ -1,0 +1,57 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<!DOCTYPE plist PUBLIC "-//Apple//DTD PLIST 1.0//EN" "http://www.apple.com/DTDs/PropertyList-1.0.dtd">
+<plist version="1.0">
+<dict>
+    <key>title</key>
+    <string>AxsTweakKit</string>
+    <key>items</key>
+    <array>
+        <dict>
+            <key>cell</key>
+            <string>PSGroupCell</string>
+            <key>label</key>
+            <string>基本设置</string>
+            <key>footerText</key>
+            <string>面板是配置的唯一写入方。关闭开关后插件保持系统原行为。</string>
+        </dict>
+        <dict>
+            <key>cell</key>
+            <string>PSSwitchCell</string>
+            <key>label</key>
+            <string>启用插件</string>
+            <key>key</key>
+            <string>enabled</string>
+            <key>defaults</key>
+            <string>com.axs.axstweakkit</string>
+            <key>default</key>
+            <false/>
+        </dict>
+        <dict>
+            <key>cell</key>
+            <string>PSGroupCell</string>
+            <key>label</key>
+            <string>数值参数</string>
+            <key>footerText</key>
+            <string>0.0 到 1.0，松手后写入并立即通知插件重新读取。</string>
+        </dict>
+        <dict>
+            <key>cell</key>
+            <string>PSTitleValueCell</string>
+            <key>cellClass</key>
+            <string>AxsTweakKitSliderCell</string>
+            <key>label</key>
+            <string>强度</string>
+            <key>key</key>
+            <string>intensity</string>
+            <key>defaults</key>
+            <string>com.axs.axstweakkit</string>
+            <key>default</key>
+            <real>0.5</real>
+            <key>min</key>
+            <real>0.0</real>
+            <key>max</key>
+            <real>1.0</real>
+        </dict>
+    </array>
+</dict>
+</plist>

@@ -1,0 +1,94 @@
+{
+  "kind": "tweak",
+  "language": "objc",
+  "deploymentTarget": "16.0",
+  "architectures": {
+    "rootless": ["arm64", "arm64e"],
+    "roothide": ["arm64", "arm64e"]
+  },
+  "configurations": {
+    "Debug": {
+      "optimization": "0",
+      "debugInfo": true
+    },
+    "Release": {
+      "optimization": "2",
+      "debugInfo": false
+    }
+  },
+  "products": [
+    {
+      "id": "tweak",
+      "type": "dylib",
+      "name": "AxsTweakKit",
+      "sources": ["Sources/*.m"],
+      "headerSearchPaths": ["Shared"],
+      "objcARC": true,
+      "frameworks": ["Foundation", "UIKit"],
+      "libraries": ["substrate"],
+      "extensionSupport": [
+        {"extension": "wiki.qaq.apelin.dev.tweak", "component": "substrate"}
+      ]
+    },
+    {
+      "id": "prefs",
+      "type": "bundle",
+      "name": "AxsTweakKitPrefs",
+      "sources": ["Prefs/*.m"],
+      "headerSearchPaths": ["Shared"],
+      "objcARC": true,
+      "frameworks": ["Foundation", "UIKit", "Preferences"],
+      "infoPlist": "Prefs/Resources/Info.plist",
+      "resources": ["Prefs/Resources/AxsTweakKitRoot.plist"],
+      "extensionSupport": [
+        {"extension": "wiki.qaq.apelin.dev.preferences", "component": "preferences"}
+      ]
+    }
+  ],
+  "build": {
+    "steps": [
+      {"type": "compile", "product": "tweak"},
+      {"type": "link", "product": "tweak"},
+      {"type": "lipo", "product": "tweak"},
+      {"type": "dsym", "product": "tweak"},
+      {"type": "strip", "product": "tweak", "style": "non-global"},
+      {"type": "sign", "product": "tweak", "identity": "adhoc"},
+
+      {"type": "compile", "product": "prefs"},
+      {"type": "link", "product": "prefs"},
+      {"type": "bundle-resources", "product": "prefs"},
+      {"type": "lipo", "product": "prefs"},
+      {"type": "dsym", "product": "prefs"},
+      {"type": "strip", "product": "prefs", "style": "non-global"},
+      {"type": "sign", "product": "prefs", "identity": "adhoc"}
+    ]
+  },
+  "package": {
+    "id": "com.axs.axstweakkit",
+    "name": "AxsTweakKit",
+    "version": "1.0.0",
+    "description": "Axs 约定风格的插件脚手架：SpringBoard hook 骨架、只读配置快照、设置面板与自定义滑条。",
+    "author": "Axs",
+    "section": "Tweaks",
+    "depends": ["mobilesubstrate", "preferenceloader"],
+    "layout": [
+      {
+        "path": "/Library/MobileSubstrate/DynamicLibraries/AxsTweakKit.dylib",
+        "product": "tweak"
+      },
+      {
+        "path": "/Library/PreferenceBundles/AxsTweakKitPrefs.bundle",
+        "product": "prefs"
+      },
+      {
+        "path": "/Library/PreferenceLoader/Preferences/AxsTweakKitPrefs.plist",
+        "file": "Prefs/Resources/AxsTweakKitPrefs.plist",
+        "mode": "0644"
+      }
+    ],
+    "tweakFilter": {
+      "dylib": "tweak",
+      "bundles": ["com.apple.springboard"]
+    }
+  }
+}

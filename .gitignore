@@ -1,0 +1,8 @@
+.DS_Store
+build/
+Builds/
+*.deb
+*.dSYM
+
+# Apelin's own manifest: it holds projectID/environment, not project sources.
+apelin-project.json
