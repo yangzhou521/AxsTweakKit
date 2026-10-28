@@ -48,21 +48,15 @@ is uncompiled and unverified.
     only a one-line pointer. Fixed to link `-Ftheos/vendor/lib -framework
     CydiaSubstrate` and to copy the fork's dyld flags (roothide install_name;
     rootless rpaths, on dylib and bundle).
-  - run 3: compile passed, link failed on `_CGRectGetWidth`, `_CGRectGetHeight`,
-    `_CGRectZero` from `Prefs/AxsTweakKitSliderCell.m`. The headerless
-    iPhoneOS16.5 SDK's `UIKit.tbd` does not reexport CoreGraphics, so both
-    products now list `-framework CoreGraphics` (`$FRAMEWORKS` in
-    `scripts/build.sh`, `frameworks` in `Docs/apelin-project.tweak.json`).
-    Any further CGRect/CG use needs it too; do not drop it to "fix" a link.
-- Run 3 (2026-10-28) got past substrate and failed in the bundle's link:
-  `CGRectGetWidth` / `CGRectGetHeight` / `CGRectZero` undefined for arm64
-  (`Prefs/AxsTweakKitSliderCell.m`). The headerless iPhoneOS16.5 SDK's
-  UIKit.tbd does not reexport CoreGraphics, and Foundation does still reexport
-  CoreFoundation (the dylib's `CFNotificationCenter*` linked fine), so only
-  CoreGraphics has to be listed by hand. `scripts/build.sh` now links
-  `-framework CoreGraphics` for both products (`$FRAMEWORKS`), and
-  `Docs/apelin-project.tweak.json` lists it in both products' `frameworks`.
-  Unverified until a run with this tree passes.
+  - run 3: compile passed, link failed for arm64 on `_CGRectGetWidth`,
+    `_CGRectGetHeight`, `_CGRectZero` from `Prefs/AxsTweakKitSliderCell.m`.
+    The headerless iPhoneOS16.5 SDK's `UIKit.tbd` does not reexport
+    CoreGraphics, while Foundation still reexports CoreFoundation (the dylib's
+    `CFNotificationCenter*` linked fine), so only CoreGraphics is listed by
+    hand: `$FRAMEWORKS` in `scripts/build.sh` and `frameworks` in
+    `Docs/apelin-project.tweak.json`, on both products. Any further CGRect/CG
+    use needs it too; do not drop it to "fix" a link. Unverified until a run
+    with this tree passes.
 
 ## Invariants
 
