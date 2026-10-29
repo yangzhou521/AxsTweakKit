@@ -24,7 +24,7 @@ set -eu
 
 # ---- 包身份：刻意与坏掉的 1.0.7 同名，就地升级替换 ----
 PACKAGE_ID=com.unknown.notesreadonly
-VERSION=1.0.8
+VERSION=1.0.9
 PRODUCT=NotesReadOnly
 MIN_IOS=16.0
 ARCHS="arm64 arm64e"

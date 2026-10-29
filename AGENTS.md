@@ -42,6 +42,16 @@ plus its cloud build, added because this device has no toolchain (see above).
 - 1.0.8 is built, published and verified on this device (2026-10-29). Release asset:
   `https://github.com/yangzhou521/AxsTweakKit/releases/download/notesreadonly-v1.0.8/com.unknown.notesreadonly_1.0.8_iphoneos-arm64e.deb`
   (sha256 `02d39c7a447e10bb55443f2e0686c719ef688ab93a438bd26cf88a58865f829d`).
+- **1.0.9 fixes a hard crash of 1.0.8**: opening a note killed Notes. 1.0.8 kept one set
+  of wrappers plus a shared `(class, selector) → original IMP` table, so when
+  `-[ICTextView setEditable:]` did `[super setEditable:]` and landed on the parent's site
+  the lookup went by `self`'s class and handed back ICTextView's own "original" — the hook
+  again — recursing thousands of frames until the stack blew (`memmove` in
+  `AxsNotesReadOnlyOriginalIMP`). 1.0.9 gives every site its own wrapper and its own static
+  original slot (`AXS_DEFINE_EDITOR_SITES` over `AXS_FOR_EACH_EDITOR_CLASS`) and installs a
+  site only on a class that declares the method (`AxsClassDeclaresMethod`). Never go back
+  to one lookup keyed by `object_getClass(self)`; the `super` chain is the whole reason.
+  Source only so far — no toolchain here, so 1.0.9 is unbuilt and unverified until CI runs.
 - Install from the device only through irisin-cli, and only with the real-root path
   (`/rootfs/…`); the jbroot spelling is not found:
   `irisin-cli install --yes --json /rootfs/var/mobile/Documents/<deb>` (as root).
@@ -50,7 +60,9 @@ plus its cloud build, added because this device has no toolchain (see above).
   `icli app kill com.apple.mobilenotes --force` (kill needs `--force`),
   `icli app launch com.apple.mobilenotes`, then
   `icli prefs read com.apple.mobilenotes NotesReadOnlyDiagnostics`. Expected:
-  `v1.0.8;hooks=25;classes=ICTextView,ICBaseTextView,NoteHTMLEditorView,UITextView;menu=item;locked=0`.
+  `v1.0.8;hooks=25;classes=ICTextView,ICBaseTextView,NoteHTMLEditorView,UITextView;menu=item;locked=0`
+  — that is the 1.0.8 string; from 1.0.9 the prefix is `v1.0.9` and `hooks` is larger
+  (one site per class × selector).
   Missing diagnostics almost always means the process was never restarted, not that the
   tweak failed to inject. Second channel, same string, inside the Notes container:
   `Documents/NotesReadOnlyDiagnostics.txt`.

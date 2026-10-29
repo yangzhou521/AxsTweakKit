@@ -19,12 +19,13 @@
 #import <objc/runtime.h>
 #import <os/lock.h>
 #import <os/log.h>
+#import <stdlib.h>
 #import <string.h>
 #import <substrate.h>
 
 #pragma mark - 常量
 
-static NSString *const AxsNotesReadOnlyVersion = @"1.0.8";
+static NSString *const AxsNotesReadOnlyVersion = @"1.0.9";
 // 开关与诊断都写在 com.apple.mobilenotes 域（备忘录进程自己的域，icli prefs read 也能读）。
 static NSString *const AxsNotesReadOnlyEnabledKey = @"NotesReadOnlyEnabled";
 static NSString *const AxsNotesReadOnlyDiagnosticsKey = @"NotesReadOnlyDiagnostics";
@@ -58,69 +59,56 @@ static void AxsNotesReadOnlyWriteDiagnostics(void);
 static void AxsNotesReadOnlyRefreshMenus(void);
 static void AxsNotesReadOnlyApplyLock(void);
 
-#pragma mark - 原 IMP 表
+#pragma mark - 钩子站点
 
-// 同一个选择器会挂在多个类上（ICTextView / NoteHTMLEditorView / UITextView…），
-// 每个类被 MSHookMessageEx 换下来的原 IMP 都不同，调用原实现前要按 (类, 选择器) 找回来。
-#define AxsNotesReadOnlyMaxOriginals 64
+// 每个 (类, 选择器) 是一“站”，各有独立的包装函数和自己的原 IMP 槽。
+//
+// 1.0.8 用的是一张 (类, 选择器) → 原 IMP 的总表，1.0.9 把它拆成每站各自的槽，原因就是
+// 那个闪退：同一个选择器挂在多个类上时，`-[ICTextView setEditable:]` 里再 `[super
+// setEditable:]` 进到父类那一站的钩子，而 self 仍然是 ICTextView 实例，按 self 的类查总表
+// 又查到 ICTextView 那一份原 IMP，于是 钩子 → 原 IMP → super → 钩子 … 无限递归，几帧就撑爆
+// 栈（崩溃里 AxsNotesReadOnlyHookedSetEditable 与 -[ICTextView setEditable:] 交替上千层，
+// 最后在栈保护区写坏）。每站只认自己的原 IMP，super 调用落到父类那一站，链路自然到底。
+//
+// 另外只挂“自己声明了这个方法”的类：继承来的方法由祖先那一站覆盖，同一个实现不会被挂两次。
 
-typedef struct AxsNotesReadOnlyOriginal {
-    Class cls;
-    SEL sel;
-    IMP imp;
-} AxsNotesReadOnlyOriginal;
-
-static AxsNotesReadOnlyOriginal sOriginals[AxsNotesReadOnlyMaxOriginals];
-static size_t sOriginalCount = 0;
-static os_unfair_lock sOriginalsLock = OS_UNFAIR_LOCK_INIT;
-
-static IMP AxsNotesReadOnlyOriginalIMP(id self, SEL cmd) {
-    if (self == nil || cmd == NULL) {
-        return NULL;
-    }
-
-    AxsNotesReadOnlyOriginal snapshot[AxsNotesReadOnlyMaxOriginals];
-    size_t count = 0;
-    os_unfair_lock_lock(&sOriginalsLock);
-    count = sOriginalCount;
-    if (count > 0) {
-        memcpy(snapshot, sOriginals, count * sizeof(snapshot[0]));
-    }
-    os_unfair_lock_unlock(&sOriginalsLock);
-
-    // 精确到类，再沿父类链找（挂的是父类时子类实例也会走到这里）。
-    for (Class cls = object_getClass(self); cls != Nil; cls = class_getSuperclass(cls)) {
-        for (size_t i = 0; i < count; i++) {
-            if (snapshot[i].sel == cmd && snapshot[i].cls == cls) {
-                return snapshot[i].imp;
-            }
-        }
-    }
-    // 同选择器在别处的原 IMP（正常情况下几个类共用同一个实现）。
-    for (size_t i = 0; i < count; i++) {
-        if (snapshot[i].sel == cmd) {
-            return snapshot[i].imp;
-        }
-    }
-    return NULL;
-}
-
-static BOOL AxsNotesReadOnlyHook(Class cls, SEL sel, IMP hook) {
-    if (cls == Nil || sel == NULL || hook == NULL) {
+static BOOL AxsClassDeclaresMethod(Class cls, SEL sel) {
+    if (cls == Nil || sel == NULL) {
         return NO;
     }
-
-    os_unfair_lock_lock(&sOriginalsLock);
-    for (size_t i = 0; i < sOriginalCount; i++) {
-        if (sOriginals[i].cls == cls && sOriginals[i].sel == sel) {
-            os_unfair_lock_unlock(&sOriginalsLock);
-            return NO;  // 已经挂过，不重复挂
+    unsigned int count = 0;
+    Method *methods = class_copyMethodList(cls, &count);
+    BOOL found = NO;
+    for (unsigned int i = 0; i < count; i++) {
+        if (method_getName(methods[i]) == sel) {
+            found = YES;
+            break;
         }
     }
-    os_unfair_lock_unlock(&sOriginalsLock);
+    if (methods != NULL) {
+        free(methods);
+    }
+    return found;
+}
 
-    if (class_getInstanceMethod(cls, sel) == NULL) {
-        return NO;  // 这个类没有这个方法
+typedef struct AxsHookSite {
+    const char *className;
+    const char *selectorName;
+    IMP hook;
+    IMP *slot;
+} AxsHookSite;
+
+// 挂一站。requireDeclared = YES 时只挂类自己实现的方法（多站同选择器必须这样）；
+// NO 时连继承来的方法也挂，只用于“同一个选择器全局只有一站”的导航条钩子。
+static BOOL AxsInstallSiteOnClass(Class cls, SEL sel, IMP hook, IMP *slot, BOOL requireDeclared) {
+    if (cls == Nil || sel == NULL || hook == NULL || slot == NULL) {
+        return NO;
+    }
+    if (*slot != NULL) {
+        return NO;  // 这一站已经挂过
+    }
+    if (requireDeclared && !AxsClassDeclaresMethod(cls, sel)) {
+        return NO;
     }
 
     IMP previous = NULL;
@@ -128,15 +116,26 @@ static BOOL AxsNotesReadOnlyHook(Class cls, SEL sel, IMP hook) {
     if (previous == NULL) {
         return NO;
     }
-
-    os_unfair_lock_lock(&sOriginalsLock);
-    if (sOriginalCount < AxsNotesReadOnlyMaxOriginals) {
-        sOriginals[sOriginalCount++] = (AxsNotesReadOnlyOriginal){ cls, sel, previous };
-    }
-    os_unfair_lock_unlock(&sOriginalsLock);
-
+    *slot = previous;
     sHookCount += 1;
     return YES;
+}
+
+// 按类名挂一组站点；类还不存在就跳过，下次（主队列 / 导航条 hook 里）再试。
+static BOOL AxsInstallSites(const AxsHookSite *sites, size_t count) {
+    BOOL any = NO;
+    for (size_t i = 0; i < count; i++) {
+        if (sites[i].selectorName == NULL) {
+            continue;
+        }
+        NSString *name = [NSString stringWithUTF8String:sites[i].className];
+        Class cls = name.length > 0 ? NSClassFromString(name) : Nil;
+        SEL sel = sel_registerName(sites[i].selectorName);
+        if (AxsInstallSiteOnClass(cls, sel, sites[i].hook, sites[i].slot, YES)) {
+            any = YES;
+        }
+    }
+    return any;
 }
 
 #pragma mark - 诊断
@@ -503,11 +502,18 @@ static void AxsNotesReadOnlyRefreshMenus(void) {
 
 #pragma mark - 导航条 hook
 
+// 这几个选择器全局只有一站（UINavigationItem / UIBarButtonItem 各一个），
+// 所以各自一个静态原 IMP 就够，不用查表。
+static IMP axsSetRightItemsAnimatedOriginal = NULL;
+static IMP axsSetRightItemsOriginal = NULL;
+static IMP axsSetRightItemAnimatedOriginal = NULL;
+static IMP axsSetRightItemOriginal = NULL;
+static IMP axsSetMenuOriginal = NULL;
+
 static void AxsNotesReadOnlyHookedSetRightBarButtonItemsAnimated(id self, SEL _cmd,
                                                                 NSArray *items, BOOL animated) {
-    IMP original = AxsNotesReadOnlyOriginalIMP(self, _cmd);
-    if (original != NULL) {
-        ((void (*)(id, SEL, id, BOOL))original)(self, _cmd, items, animated);
+    if (axsSetRightItemsAnimatedOriginal != NULL) {
+        ((void (*)(id, SEL, id, BOOL))axsSetRightItemsAnimatedOriginal)(self, _cmd, items, animated);
     }
     if (sInjecting) {
         return;
@@ -516,9 +522,8 @@ static void AxsNotesReadOnlyHookedSetRightBarButtonItemsAnimated(id self, SEL _c
 }
 
 static void AxsNotesReadOnlyHookedSetRightBarButtonItems(id self, SEL _cmd, NSArray *items) {
-    IMP original = AxsNotesReadOnlyOriginalIMP(self, _cmd);
-    if (original != NULL) {
-        ((void (*)(id, SEL, id))original)(self, _cmd, items);
+    if (axsSetRightItemsOriginal != NULL) {
+        ((void (*)(id, SEL, id))axsSetRightItemsOriginal)(self, _cmd, items);
     }
     if (sInjecting) {
         return;
@@ -528,9 +533,8 @@ static void AxsNotesReadOnlyHookedSetRightBarButtonItems(id self, SEL _cmd, NSAr
 
 static void AxsNotesReadOnlyHookedSetRightBarButtonItemAnimated(id self, SEL _cmd,
                                                                UIBarButtonItem *item, BOOL animated) {
-    IMP original = AxsNotesReadOnlyOriginalIMP(self, _cmd);
-    if (original != NULL) {
-        ((void (*)(id, SEL, id, BOOL))original)(self, _cmd, item, animated);
+    if (axsSetRightItemAnimatedOriginal != NULL) {
+        ((void (*)(id, SEL, id, BOOL))axsSetRightItemAnimatedOriginal)(self, _cmd, item, animated);
     }
     if (sInjecting) {
         return;
@@ -539,9 +543,8 @@ static void AxsNotesReadOnlyHookedSetRightBarButtonItemAnimated(id self, SEL _cm
 }
 
 static void AxsNotesReadOnlyHookedSetRightBarButtonItem(id self, SEL _cmd, UIBarButtonItem *item) {
-    IMP original = AxsNotesReadOnlyOriginalIMP(self, _cmd);
-    if (original != NULL) {
-        ((void (*)(id, SEL, id))original)(self, _cmd, item);
+    if (axsSetRightItemOriginal != NULL) {
+        ((void (*)(id, SEL, id))axsSetRightItemOriginal)(self, _cmd, item);
     }
     if (sInjecting) {
         return;
@@ -551,9 +554,8 @@ static void AxsNotesReadOnlyHookedSetRightBarButtonItem(id self, SEL _cmd, UIBar
 
 // 备忘录常常先建按钮、之后才赋菜单：这条路径补上。
 static void AxsNotesReadOnlyHookedSetMenu(id self, SEL _cmd, UIMenu *menu) {
-    IMP original = AxsNotesReadOnlyOriginalIMP(self, _cmd);
-    if (original != NULL) {
-        ((void (*)(id, SEL, id))original)(self, _cmd, menu);
+    if (axsSetMenuOriginal != NULL) {
+        ((void (*)(id, SEL, id))axsSetMenuOriginal)(self, _cmd, menu);
     }
     if (sInjecting) {
         return;
@@ -585,16 +587,22 @@ static void AxsNotesReadOnlyInstallNavigationHooks(void) {
         return;
     }
 
-    AxsNotesReadOnlyHook(navigationItem, sel_registerName("setRightBarButtonItems:animated:"),
-                         (IMP)AxsNotesReadOnlyHookedSetRightBarButtonItemsAnimated);
-    AxsNotesReadOnlyHook(navigationItem, sel_registerName("setRightBarButtonItems:"),
-                         (IMP)AxsNotesReadOnlyHookedSetRightBarButtonItems);
-    AxsNotesReadOnlyHook(navigationItem, sel_registerName("setRightBarButtonItem:animated:"),
-                         (IMP)AxsNotesReadOnlyHookedSetRightBarButtonItemAnimated);
-    AxsNotesReadOnlyHook(navigationItem, sel_registerName("setRightBarButtonItem:"),
-                         (IMP)AxsNotesReadOnlyHookedSetRightBarButtonItem);
-    AxsNotesReadOnlyHook(barButtonItem, sel_registerName("setMenu:"),
-                         (IMP)AxsNotesReadOnlyHookedSetMenu);
+    // 只挂一次，所以允许继承来的方法也挂（requireDeclared: NO）。
+    AxsInstallSiteOnClass(navigationItem, sel_registerName("setRightBarButtonItems:animated:"),
+                          (IMP)AxsNotesReadOnlyHookedSetRightBarButtonItemsAnimated,
+                          &axsSetRightItemsAnimatedOriginal, NO);
+    AxsInstallSiteOnClass(navigationItem, sel_registerName("setRightBarButtonItems:"),
+                          (IMP)AxsNotesReadOnlyHookedSetRightBarButtonItems,
+                          &axsSetRightItemsOriginal, NO);
+    AxsInstallSiteOnClass(navigationItem, sel_registerName("setRightBarButtonItem:animated:"),
+                          (IMP)AxsNotesReadOnlyHookedSetRightBarButtonItemAnimated,
+                          &axsSetRightItemAnimatedOriginal, NO);
+    AxsInstallSiteOnClass(navigationItem, sel_registerName("setRightBarButtonItem:"),
+                          (IMP)AxsNotesReadOnlyHookedSetRightBarButtonItem,
+                          &axsSetRightItemOriginal, NO);
+    AxsInstallSiteOnClass(barButtonItem, sel_registerName("setMenu:"),
+                          (IMP)AxsNotesReadOnlyHookedSetMenu,
+                          &axsSetMenuOriginal, NO);
 }
 
 #pragma mark - 只读执行 hook
@@ -619,51 +627,83 @@ static BOOL AxsNotesReadOnlyIsReadOnlySelector(SEL action) {
     return NO;
 }
 
-static void AxsNotesReadOnlyHookedSetEditable(id self, SEL _cmd, BOOL editable) {
-    IMP original = AxsNotesReadOnlyOriginalIMP(self, _cmd);
-    if (original == NULL) {
-        return;
-    }
-    ((void (*)(id, SEL, BOOL))original)(self, _cmd, sLocked ? NO : editable);
-}
+// —— 每站一套：自己的包装函数 + 自己的原 IMP 槽 ——
+//
+// 1.0.8 只有一组包装函数加一张 (类, 选择器) → 原 IMP 的总表。`-[ICTextView setEditable:]` 里再
+// `[super setEditable:]` 落到父类那一站的钩子时，self 仍是 ICTextView 实例，按 self 的类查表
+// 又取回 ICTextView 自己那份「原 IMP」（其实就是钩子），于是 钩子 → 原 IMP → super → 钩子
+// 无尽递归，栈瞬间撑爆（崩溃里 AxsNotesReadOnlyHookedSetEditable 与 -[ICTextView setEditable:]
+// 交替上千层）。改成每站独立，谁挂的谁认自己的原 IMP，super 调用顺着父类那一站往下走，链路
+// 自然到底。
 
-static BOOL AxsNotesReadOnlyHookedIsEditable(id self, SEL _cmd) {
-    if (sLocked) {
-        return NO;
-    }
-    IMP original = AxsNotesReadOnlyOriginalIMP(self, _cmd);
-    return original != NULL ? ((BOOL (*)(id, SEL))original)(self, _cmd) : NO;
-}
+#define AXS_FOR_EACH_EDITOR_CLASS(X) \
+    X(ICTextView) \
+    X(ICBaseTextView) \
+    X(NoteHTMLEditorView) \
+    X(UITextView)
 
-static BOOL AxsNotesReadOnlyHookedCanBecomeFirstResponder(id self, SEL _cmd) {
-    if (sLocked) {
-        return NO;
-    }
-    IMP original = AxsNotesReadOnlyOriginalIMP(self, _cmd);
-    return original != NULL ? ((BOOL (*)(id, SEL))original)(self, _cmd) : NO;
-}
+#define AXS_DEFINE_EDITOR_SITES(TOKEN)                                                       \
+    static IMP axsSetEditableOriginal_##TOKEN = NULL;                                         \
+    static void axsSetEditableHook_##TOKEN(id self, SEL _cmd, BOOL editable) {                \
+        IMP original = axsSetEditableOriginal_##TOKEN;                                        \
+        if (original == NULL) {                                                               \
+            return;                                                                           \
+        }                                                                                     \
+        ((void (*)(id, SEL, BOOL))original)(self, _cmd, sLocked ? NO : editable);             \
+    }                                                                                         \
+                                                                                              \
+    static IMP axsIsEditableOriginal_##TOKEN = NULL;                                          \
+    static BOOL axsIsEditableHook_##TOKEN(id self, SEL _cmd) {                                \
+        if (sLocked) {                                                                        \
+            return NO;                                                                        \
+        }                                                                                     \
+        IMP original = axsIsEditableOriginal_##TOKEN;                                         \
+        return original != NULL ? ((BOOL (*)(id, SEL))original)(self, _cmd) : NO;             \
+    }                                                                                         \
+                                                                                              \
+    static IMP axsCanBecomeFirstResponderOriginal_##TOKEN = NULL;                             \
+    static BOOL axsCanBecomeFirstResponderHook_##TOKEN(id self, SEL _cmd) {                   \
+        if (sLocked) {                                                                        \
+            return NO;                                                                        \
+        }                                                                                     \
+        IMP original = axsCanBecomeFirstResponderOriginal_##TOKEN;                            \
+        return original != NULL ? ((BOOL (*)(id, SEL))original)(self, _cmd) : NO;             \
+    }                                                                                         \
+                                                                                              \
+    static IMP axsBecomeFirstResponderOriginal_##TOKEN = NULL;                                \
+    static BOOL axsBecomeFirstResponderHook_##TOKEN(id self, SEL _cmd) {                      \
+        if (sLocked) {                                                                        \
+            return NO;                                                                        \
+        }                                                                                     \
+        IMP original = axsBecomeFirstResponderOriginal_##TOKEN;                               \
+        return original != NULL ? ((BOOL (*)(id, SEL))original)(self, _cmd) : NO;             \
+    }                                                                                         \
+                                                                                              \
+    static IMP axsCanPerformActionOriginal_##TOKEN = NULL;                                    \
+    static BOOL axsCanPerformActionHook_##TOKEN(id self, SEL _cmd, SEL action, id sender) {   \
+        if (sLocked && !AxsNotesReadOnlyIsReadOnlySelector(action)) {                         \
+            return NO;                                                                        \
+        }                                                                                     \
+        IMP original = axsCanPerformActionOriginal_##TOKEN;                                   \
+        return original != NULL                                                               \
+            ? ((BOOL (*)(id, SEL, SEL, id))original)(self, _cmd, action, sender) : YES;       \
+    }                                                                                         \
+                                                                                              \
+    static const AxsHookSite axsEditorSites_##TOKEN[] = {                                     \
+        { #TOKEN, "setEditable:", (IMP)axsSetEditableHook_##TOKEN,                            \
+          &axsSetEditableOriginal_##TOKEN },                                                  \
+        { #TOKEN, "isEditable", (IMP)axsIsEditableHook_##TOKEN,                               \
+          &axsIsEditableOriginal_##TOKEN },                                                   \
+        { #TOKEN, "canBecomeFirstResponder", (IMP)axsCanBecomeFirstResponderHook_##TOKEN,     \
+          &axsCanBecomeFirstResponderOriginal_##TOKEN },                                      \
+        { #TOKEN, "becomeFirstResponder", (IMP)axsBecomeFirstResponderHook_##TOKEN,           \
+          &axsBecomeFirstResponderOriginal_##TOKEN },                                         \
+        { #TOKEN, "canPerformAction:withSender:", (IMP)axsCanPerformActionHook_##TOKEN,       \
+          &axsCanPerformActionOriginal_##TOKEN },                                             \
+    };
 
-static BOOL AxsNotesReadOnlyHookedBecomeFirstResponder(id self, SEL _cmd) {
-    if (sLocked) {
-        return NO;
-    }
-    IMP original = AxsNotesReadOnlyOriginalIMP(self, _cmd);
-    return original != NULL ? ((BOOL (*)(id, SEL))original)(self, _cmd) : NO;
-}
-
-static BOOL AxsNotesReadOnlyHookedCanPerformAction(id self, SEL _cmd, SEL action, id sender) {
-    if (sLocked && !AxsNotesReadOnlyIsReadOnlySelector(action)) {
-        return NO;
-    }
-    IMP original = AxsNotesReadOnlyOriginalIMP(self, _cmd);
-    return original != NULL ? ((BOOL (*)(id, SEL, SEL, id))original)(self, _cmd, action, sender) : YES;
-}
-
-static NSArray<NSString *> *AxsNotesReadOnlyEditorClassNames(void) {
-    // 头三个是备忘录自己的编辑器类（版本不同类名不同，谁在就挂谁）；
-    // UITextView 兜底，保证任何版本的备忘录都能真的挡住输入。
-    return @[ @"ICTextView", @"ICBaseTextView", @"NoteHTMLEditorView", @"UITextView" ];
-}
+// 头三个是备忘录自己的编辑器类（版本不同类名不同，谁在就挂谁）；UITextView 兜底。
+AXS_FOR_EACH_EDITOR_CLASS(AXS_DEFINE_EDITOR_SITES)
 
 // 幂等：类还不存在就跳过，下次（主队列 / 导航条 hook 里）再试。
 static void AxsNotesReadOnlyInstallEditorHooks(void) {
@@ -671,30 +711,18 @@ static void AxsNotesReadOnlyInstallEditorHooks(void) {
         sEditorClasses = [NSMutableArray array];
     }
 
-    for (NSString *name in AxsNotesReadOnlyEditorClassNames()) {
-        if ([sEditorClasses containsObject:name]) {
-            continue;
-        }
-        Class cls = NSClassFromString(name);
-        if (cls == Nil) {
-            continue;
-        }
-
-        BOOL any = NO;
-        any |= AxsNotesReadOnlyHook(cls, @selector(setEditable:),
-                                   (IMP)AxsNotesReadOnlyHookedSetEditable);
-        any |= AxsNotesReadOnlyHook(cls, @selector(isEditable),
-                                   (IMP)AxsNotesReadOnlyHookedIsEditable);
-        any |= AxsNotesReadOnlyHook(cls, @selector(canBecomeFirstResponder),
-                                   (IMP)AxsNotesReadOnlyHookedCanBecomeFirstResponder);
-        any |= AxsNotesReadOnlyHook(cls, @selector(becomeFirstResponder),
-                                   (IMP)AxsNotesReadOnlyHookedBecomeFirstResponder);
-        any |= AxsNotesReadOnlyHook(cls, @selector(canPerformAction:withSender:),
-                                   (IMP)AxsNotesReadOnlyHookedCanPerformAction);
-        if (any) {
-            [sEditorClasses addObject:name];
-        }
+#define AXS_INSTALL_EDITOR_SITES(TOKEN)                                                      \
+    if (![sEditorClasses containsObject:@#TOKEN] && NSClassFromString(@#TOKEN) != Nil) {     \
+        if (AxsInstallSites(axsEditorSites_##TOKEN,                                           \
+                            sizeof(axsEditorSites_##TOKEN)                                    \
+                                / sizeof(axsEditorSites_##TOKEN[0]))) {                       \
+            [sEditorClasses addObject:@#TOKEN];                                              \
+        }                                                                                    \
     }
+
+    AXS_FOR_EACH_EDITOR_CLASS(AXS_INSTALL_EDITOR_SITES)
+
+#undef AXS_INSTALL_EDITOR_SITES
 }
 
 #pragma mark - 开关

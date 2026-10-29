@@ -9,7 +9,7 @@
 # 可读的验证信息都写成 check-run 的 annotation（::notice title=…::），因为 job 日志要登录才
 # 能看，而公开仓库的 check-run annotations 匿名可读（/repos/{owner}/{repo}/check-runs/{id}/annotations）。
 #
-# 版本 1.0.8 是静态的：Bump 时同时改 scripts/build-notesreadonly.sh 和下面的 tag。
+# 版本 1.0.9 是静态的：Bump 时同时改 scripts/build-notesreadonly.sh 和下面的 tag。
 
 name: Build NotesReadOnly
 
@@ -114,7 +114,7 @@ jobs:
           if-no-files-found: error
 
   release:
-    name: Release (notesreadonly-v1.0.8)
+    name: Release (notesreadonly-v1.0.9)
     needs: build
     runs-on: ubuntu-latest
     steps:
@@ -131,13 +131,17 @@ jobs:
         uses: softprops/action-gh-release@v2
         with:
           token: ${{ github.token }}
-          tag_name: notesreadonly-v1.0.8
-          name: NotesReadOnly v1.0.8
+          tag_name: notesreadonly-v1.0.9
+          name: NotesReadOnly v1.0.9
           body: |
-            备忘录只读 1.0.8 — 在备忘录右上角「•••」菜单里加一个「只读模式」开关。
+            备忘录只读 1.0.9 — 在备忘录右上角「•••」菜单里加一个「只读模式」开关。
 
-            - 修复 1.0.7 完全不生效：那份 dylib 只有 arm64e 一片，A11 的用户态是 arm64，
-              所以加载不了。这一版是 arm64 + arm64e 双切片。
+            - 修复 1.0.8 打开笔记就闪退：同一个选择器挂在多个编辑器类上时，共用一张
+              (类, 选择器) → 原 IMP 的总表，父类那一站被 `[super …]` 调进来时又取回自己
+              那份「原 IMP」，钩子 → 原 IMP → super → 钩子 无限递归把栈撑爆
+              （崩溃里 `setEditable:` 交替上千层）。现在每站各有一个包装函数和自己的原
+              IMP 槽，只挂自己声明了该方法的类，super 链路自然到底。
+            - 1.0.8 的修复保留：arm64 + arm64e 双切片（1.0.7 只有 arm64e，A11 载不进来）。
             - 只注入 `com.apple.mobilenotes`；开关默认关闭，装完行为不变。
             - 开关与诊断写在备忘录的 `NotesReadOnlyEnabled` / `NotesReadOnlyDiagnostics`。
           files: release/*.deb
@@ -147,7 +151,7 @@ jobs:
         run: |
           set -euo pipefail
           DEB=$(ls release/*.deb | head -n 1)
-          echo "::notice title=deb-url::https://github.com/${{ github.repository }}/releases/download/notesreadonly-v1.0.8/$(basename "$DEB")"
+          echo "::notice title=deb-url::https://github.com/${{ github.repository }}/releases/download/notesreadonly-v1.0.9/$(basename "$DEB")"
 
       - name: Fallback anonymous upload
         if: steps.publish.outcome != 'success'
