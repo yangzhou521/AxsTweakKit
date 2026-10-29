@@ -21,8 +21,8 @@ set -eu
 PRODUCT=AxsDualSliceTweak          # 产物 dylib 名，必须等于 Sources/<名>.m 的文件名
 PACKAGE_ID=com.example.axsdualslice
 VERSION=1.0.0
-NAME_ZH=双切片示例
-DESCRIPTION=双切片（arm64 + arm64e）示例插件：演示「一站一槽」钩子结构与加载诊断。
+NAME_ZH="双切片示例"
+DESCRIPTION="双切片（arm64 + arm64e）示例插件：演示「一站一槽」钩子结构与加载诊断。"
 MAINTAINER=changeme
 MIN_IOS=16.0
 # ───────────────────────────────────────────────────────────────────
