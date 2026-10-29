@@ -84,7 +84,7 @@ jobs:
           else
             grep -E "error:|error |not found|undefined|ld: |clang: |fatal|No such file|missing" /tmp/nr-build.log \
               | head -n 8 > /tmp/nr-errs.txt || true
-            tail -n 5 /tmp/nr-build.log >> /tmp/nr-errs.txt
+            tail -n 12 /tmp/nr-build.log >> /tmp/nr-errs.txt
             while IFS= read -r line; do
               echo "::error title=build-notesreadonly::$line"
             done < /tmp/nr-errs.txt

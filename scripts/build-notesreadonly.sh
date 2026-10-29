@@ -95,7 +95,8 @@ done
 # ---- 依赖形状核对：substrate 必须是 .jbroot 相对路径，否则本机解析不到 ----
 echo "build-notesreadonly.sh: --- otool -L (before) ---"
 otool -L "$DY"
-SUBSTRATE_ENTRY=$(otool -L "$DY" | awk '/substrate/ {print $1; exit}')
+# 注意：依赖名是 CydiaSubstrate（大写 S），匹配必须忽略大小写，否则会误判成"没有 substrate 依赖"。
+SUBSTRATE_ENTRY=$(otool -L "$DY" | awk 'tolower($0) ~ /substrate/ {print $1; exit}')
 if [ -z "$SUBSTRATE_ENTRY" ]; then
   echo "build-notesreadonly.sh: no substrate dependency at all" >&2
   exit 5
@@ -104,7 +105,8 @@ if [ "$SUBSTRATE_ENTRY" != "$WANTED_SUBSTRATE" ]; then
   echo "build-notesreadonly.sh: rewriting $SUBSTRATE_ENTRY -> $WANTED_SUBSTRATE"
   install_name_tool -change "$SUBSTRATE_ENTRY" "$WANTED_SUBSTRATE" "$DY"
 fi
-SUBSTRATE_ENTRY=$(otool -L "$DY" | awk '/substrate/ {print $1; exit}')
+# 注意：依赖名是 CydiaSubstrate（大写 S），匹配必须忽略大小写，否则会误判成"没有 substrate 依赖"。
+SUBSTRATE_ENTRY=$(otool -L "$DY" | awk 'tolower($0) ~ /substrate/ {print $1; exit}')
 if [ "$SUBSTRATE_ENTRY" != "$WANTED_SUBSTRATE" ]; then
   echo "build-notesreadonly.sh: substrate entry is '$SUBSTRATE_ENTRY', wanted '$WANTED_SUBSTRATE'" >&2
   exit 6
