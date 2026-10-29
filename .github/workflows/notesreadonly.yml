@@ -19,6 +19,12 @@ on:
     branches:
       - main
       - master
+    # 只在这个产品的文件变动时才跑：以前任何一次 master push（哪怕只改 AGENTS.md）都会重建
+    # 并重新发布，把已经装机验证过的那份 deb 换掉（体积和 sha256 都会变）。
+    paths:
+      - 'NotesReadOnly/**'
+      - 'scripts/build-notesreadonly.sh'
+      - '.github/workflows/notesreadonly.yml'
 
 permissions:
   contents: write
