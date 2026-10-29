@@ -382,7 +382,12 @@ static UIMenu *AxsNotesReadOnlyInjectActionIntoMenu(UIMenu *menu) {
         [NSMutableArray arrayWithCapacity:children.count + 1];
     BOOL replaced = NO;
     for (UIMenuElement *child in children) {
-        NSString *identifier = child.identifier;
+        // theos 的 UIKit 头里 UIMenuElement.identifier 没声明（运行时真的有），走运行时取值。
+        NSString *identifier = nil;
+        SEL identifierSelector = @selector(identifier);
+        if ([child respondsToSelector:identifierSelector]) {
+            identifier = ((id (*)(id, SEL))objc_msgSend)(child, identifierSelector);
+        }
         if ([identifier isKindOfClass:[NSString class]] &&
             [identifier isEqualToString:AxsNotesReadOnlyActionIdentifier]) {
             if (!replaced) {
