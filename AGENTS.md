@@ -44,7 +44,8 @@ plus its cloud build, added because this device has no toolchain (see above).
   (sha256 `02d39c7a447e10bb55443f2e0686c719ef688ab93a438bd26cf88a58865f829d`).
 - **1.0.9 is built, published and verified on this device (2026-10-30).** Release asset:
   `https://github.com/yangzhou521/AxsTweakKit/releases/download/notesreadonly-v1.0.9/com.unknown.notesreadonly_1.0.9_iphoneos-arm64e.deb`
-  (sha256 `80851f621da2d7befc9a6c8f9a4756b15b542b122e153e125db1596f49cd6df4`, 14704 B, fat dylib
+  (装机验证的那一份 sha256 `80851f621da2d7befc9a6c8f9a4756b15b542b122e153e125db1596f49cd6df4`,
+  14704 B, fat dylib
   arm64 + arm64e). Built by `Build NotesReadOnly` run #6 on `a69d2d7` (green), installed over
   1.0.8 with irisin-cli over the real-root path. On-device checks after a Notes restart:
   `icli prefs read com.apple.mobilenotes NotesReadOnlyDiagnostics` →
@@ -63,7 +64,12 @@ plus its cloud build, added because this device has no toolchain (see above).
   original slot (`AXS_DEFINE_EDITOR_SITES` over `AXS_FOR_EACH_EDITOR_CLASS`) and installs a
   site only on a class that declares the method (`AxsClassDeclaresMethod`). Never go back
   to one lookup keyed by `object_getClass(self)`; the `super` chain is the whole reason.
-  Source only so far — no toolchain here, so 1.0.9 is unbuilt and unverified until CI runs.
+- The release asset is **rebuilt by every `Build NotesReadOnly` run**, so its size and sha256
+  change even when the source does not: the deb built from `71bff48` (2026-10-30) is 14680 B,
+  sha256 `6a2511e064912be779a1bf83b032a36402c659be193e02278a5c60ec750cc6bf`, while what is
+  installed and verified on this device is the `80851f…` one above. The workflow now carries a
+  `paths` filter (`NotesReadOnly/**`, `scripts/build-notesreadonly.sh`, itself), so a docs-only
+  push no longer triggers a rebuild and a re-release.
 - Install from the device only through irisin-cli, and only with the real-root path
   (`/rootfs/…`); the jbroot spelling is not found:
   `irisin-cli install --yes --json /rootfs/var/mobile/Documents/<deb>` (as root).
