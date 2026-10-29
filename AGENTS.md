@@ -121,6 +121,26 @@ plus its cloud build, added because this device has no toolchain (see above).
     identically. Always "Run workflow" on master instead. The Build Package
     step now prints the commit and a sha256 of `scripts/build.sh`, so a log
     says which tree it came from.
+  - Since 2026-10-30 the push trigger carries a `paths` filter (`Sources/`,
+    `Prefs/`, `Shared/`, the filter plist, `scripts/build.sh`, the manifests,
+    itself): the docs-only push of `6a5edef` had cost a full two-leg run for
+    nothing. `workflow_dispatch` ignores `paths`, so a manual release is
+    unaffected.
+
+## Carrying the know-how (skills, template, naming)
+
+- `Skills/a11-roothide-ondevice/SKILL.md` — a mirror of the on-device Apelin skill
+  of the same name (the cloud-build loop, the roothide install/verify steps, the
+  hook-structure rules). Keep the two copies in step; the device copy is the one
+  Apelin reads.
+- `Templates/AxsDualSlice/` — a starter tweak in the same shape as NotesReadOnly:
+  dual slice (arm64 + arm64e), 一站一槽 sites, load-time diagnostics, CI with a
+  `paths` filter. **Unverified as a package** — nothing has installed it; its
+  parts are copied from the two builds that were verified on this device.
+- Naming used from here on: **「一站一槽」/ Per-Site Original Slot** for the hook
+  structure (R1: each site its own static original-IMP slot; R2: 声明者才挂 /
+  Declared-Owner Install), and **「A11 双切片云编译闭环」** for the whole path from
+  source to a verified install. 1.0.8's crash is what violating R1 looks like.
 
 ## Invariants
 

@@ -31,6 +31,19 @@ on:
     branches:
       - main
       - master
+    # Only this product's files. Without it every master push (a docs-only edit
+    # included) rebuilt both legs for nothing — 2026-10-30, commit 6a5edef
+    # (AGENTS.md only) cost a full run. workflow_dispatch ignores paths, so a
+    # manual release still works whenever it is wanted.
+    paths:
+      - 'Sources/**'
+      - 'Prefs/**'
+      - 'Shared/**'
+      - 'Support/AxsTweakKit.plist'
+      - 'scripts/build.sh'
+      - 'Docs/apelin-project.tweak.json'
+      - 'apelin-project.json'
+      - '.github/workflows/build.yml'
 
 permissions:
   contents: write

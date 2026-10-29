@@ -1,0 +1,181 @@
+# AxsDualSlice —— 双切片（arm64 + arm64e）deb 的云编译与发布。
+#
+# 用法：把这个文件拷到新仓库的 .github/workflows/dual-slice.yml 再 push。
+# 它假设仓库根就是模板的根：Sources/ Support/ scripts/。
+#
+# 为什么必须是云编译：开发机是 iPhone10,1（A11 / iOS 16.7.16 / roothide），A11 缺 FEAT_LRCPC，
+# 装不了任何 Command Line Tools，本机编不出任何东西。macOS runner 上 clang 直编 arm64 + arm64e
+# 两片再 lipo，ldid 签名，dpkg-deb 打包，然后在同一次运行里发成 Release（公开仓库匿名可下）。
+#
+# 只跑 roothide 腿（装到本机的那一份）。要 rootless 腿就把 build-dualslice.sh 的第二个参数
+# 换成 rootless，并且清楚它没有被任何设备验证过。
+#
+# 可读的验证信息都写成 check-run 的 annotation（::notice title=…::）：job 日志要登录才能看，
+# 而公开仓库的 check-run annotations 匿名可读。
+#   /repos/{owner}/{repo}/check-runs/{id}/annotations
+#
+# 版本是静态的：改版本时同时改 scripts/build-dualslice.sh 的 VERSION 和下面的 tag。
+
+name: Build AxsDualSlice
+
+on:
+  workflow_dispatch:
+  push:
+    branches:
+      - main
+      - master
+    # 只在本产品的文件变动时才跑。没有这一段时，任何一次 push（哪怕只改文档）都会重建并
+    # 重新发布，把已经装机验证过的那份 deb 换掉——体积和 sha256 都会变。
+    paths:
+      - 'Sources/**'
+      - 'Support/**'
+      - 'scripts/build-dualslice.sh'
+      - '.github/workflows/dual-slice.yml'
+
+permissions:
+  contents: write
+
+concurrency:
+  group: dualslice-${{ github.ref }}
+  cancel-in-progress: true
+
+env:
+  HOMEBREW_NO_AUTO_UPDATE: 1
+  HOMEBREW_NO_INSTALLED_DEPENDENTS_CHECK: 1
+  THEOS: ${{ github.workspace }}/theos
+  SDKROOT: ${{ github.workspace }}/theos/sdks/iPhoneOS16.5.sdk
+  APELIN_PACKAGE_DIR: packages
+  VERSION: 1.0.0
+
+jobs:
+  build:
+    name: Build (roothide)
+    runs-on: macos-14
+    steps:
+      - name: Setup Xcode
+        uses: maxim-lobanov/setup-xcode@v1
+        with:
+          xcode-version: '15.4'
+
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      # 私有头（vendor/include）与预编的 CydiaSubstrate.framework（vendor/lib）都在这里。
+      - name: Checkout Theos (roothide fork)
+        uses: actions/checkout@v4
+        with:
+          repository: roothide/theos
+          path: theos
+          submodules: recursive
+
+      - name: Install iOS SDK (iPhoneOS16.5, headerless)
+        run: |
+          set -euo pipefail
+          mkdir -p "$THEOS/sdks"
+          if [ -d "$THEOS/sdks/iPhoneOS16.5.sdk" ]; then
+            echo "iPhoneOS16.5.sdk already present"
+            exit 0
+          fi
+          SDK_STAGE="$(mktemp -d)"
+          trap 'rm -rf "$SDK_STAGE"' EXIT
+          git clone --depth 1 --filter=blob:none --sparse https://github.com/theos/sdks.git "$SDK_STAGE/sdks"
+          git -C "$SDK_STAGE/sdks" sparse-checkout set iPhoneOS16.5.sdk
+          cp -R "$SDK_STAGE/sdks/iPhoneOS16.5.sdk" "$THEOS/sdks/"
+          ls -1 "$THEOS/sdks"
+
+      - name: Install build tools
+        run: brew install ldid dpkg
+
+      - name: Build package
+        run: |
+          set -o pipefail
+          # 打印提交与脚本摘要：一次日志要能说清它编的是哪棵树。
+          echo "commit: $(git rev-parse HEAD)"
+          echo "build-dualslice.sh sha256: $(shasum -a 256 scripts/build-dualslice.sh)"
+          echo "source sha256: $(shasum -a 256 Sources/*.m)"
+          if sh scripts/build-dualslice.sh roothide 2>&1 | tee /tmp/ds-build.log; then
+            echo "=== .deb files ==="
+            find ./packages -name "*.deb" -type f
+          else
+            grep -E "error:|error |not found|undefined|ld: |clang: |fatal|No such file|missing" /tmp/ds-build.log \
+              | head -n 8 > /tmp/ds-errs.txt || true
+            tail -n 12 /tmp/ds-build.log >> /tmp/ds-errs.txt
+            while IFS= read -r line; do
+              echo "::error title=build-dualslice::$line"
+            done < /tmp/ds-errs.txt
+            exit 1
+          fi
+
+      - name: Verify and report
+        run: |
+          set -euo pipefail
+          DY=build/dualslice/out/AxsDualSliceTweak.dylib
+          echo "::notice title=commit::$(git rev-parse HEAD)"
+          # 切片：必须同时有 arm64 和 arm64e，缺一片这个包在 A11 上永远不会生效。
+          echo "::notice title=slices::$(lipo -info "$DY")"
+          otool -L "$DY" | tail -n +2 | awk '{print $1}' | while read -r lib; do
+            echo "::notice title=link::$lib"
+          done
+          DEB=$(ls packages/*.deb | head -n 1)
+          echo "::notice title=deb::$(basename "$DEB") sha256=$(shasum -a 256 "$DEB" | awk '{print $1}')"
+          echo "=== deb contents ==="
+          dpkg-deb -c "$DEB"
+
+      - name: Upload Artifact
+        uses: actions/upload-artifact@v4
+        with:
+          name: dualslice-roothide
+          path: packages/*.deb
+          if-no-files-found: error
+
+  release:
+    name: Release (dualslice-v1.0.0)
+    needs: build
+    runs-on: ubuntu-latest
+    steps:
+      - name: Download package
+        uses: actions/download-artifact@v4
+        with:
+          path: release
+          merge-multiple: true
+
+      - name: Publish release
+        id: publish
+        # 仓库的 Actions 权限只读时这里会 403；那样就走下面的匿名托管兜底，不让整轮失败。
+        continue-on-error: true
+        uses: softprops/action-gh-release@v2
+        with:
+          token: ${{ github.token }}
+          tag_name: dualslice-v1.0.0
+          name: AxsDualSlice v1.0.0
+          body: |
+            双切片（arm64 + arm64e）插件模板。
+
+            - 「一站一槽 / Per-Site Original Slot」：每站自己的静态原 IMP 槽 + 每个站点只在类
+              自己声明了该方法时才挂（Declared-Owner Install），`super` 链路不会再回环。
+            - arm64 + arm64e 双切片：A11 用户态是 arm64，只出 arm64e 的 dylib 不会被加载。
+            - 加载时写诊断（版本 / 站点数 / 装了哪些类 / 开关状态）。
+            - 只注入过滤器里列的进程；开关默认关闭，装完行为不变。
+          files: release/*.deb
+
+      - name: Report release URL
+        if: steps.publish.outcome == 'success'
+        run: |
+          set -euo pipefail
+          DEB=$(ls release/*.deb | head -n 1)
+          echo "::notice title=deb-url::https://github.com/${{ github.repository }}/releases/download/dualslice-v1.0.0/$(basename "$DEB")"
+
+      - name: Fallback anonymous upload
+        if: steps.publish.outcome != 'success'
+        run: |
+          set -uo pipefail
+          for f in release/*.deb; do
+            echo "release step did not succeed; uploading $f anonymously"
+            url=$(curl -sS --max-time 120 -A "AxsDualSlice-CI" -F "file=@$f" https://0x0.st || true)
+            if [ -z "$url" ] || ! printf '%s' "$url" | grep -q '^https'; then
+              echo "0x0.st failed, trying catbox"
+              url=$(curl -sS --max-time 120 -A "AxsDualSlice-CI" -F "reqtype=fileupload" -F "fileToUpload=@$f" https://catbox.moe/user/api.php || true)
+            fi
+            echo "fallback url for $f: $url"
+            echo "::notice title=deb-url::$url"
+          done
