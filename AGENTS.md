@@ -42,7 +42,19 @@ plus its cloud build, added because this device has no toolchain (see above).
 - 1.0.8 is built, published and verified on this device (2026-10-29). Release asset:
   `https://github.com/yangzhou521/AxsTweakKit/releases/download/notesreadonly-v1.0.8/com.unknown.notesreadonly_1.0.8_iphoneos-arm64e.deb`
   (sha256 `02d39c7a447e10bb55443f2e0686c719ef688ab93a438bd26cf88a58865f829d`).
-- **1.0.9 fixes a hard crash of 1.0.8**: opening a note killed Notes. 1.0.8 kept one set
+- **1.0.9 is built, published and verified on this device (2026-10-30).** Release asset:
+  `https://github.com/yangzhou521/AxsTweakKit/releases/download/notesreadonly-v1.0.9/com.unknown.notesreadonly_1.0.9_iphoneos-arm64e.deb`
+  (sha256 `80851f621da2d7befc9a6c8f9a4756b15b542b122e153e125db1596f49cd6df4`, 14704 B, fat dylib
+  arm64 + arm64e). Built by `Build NotesReadOnly` run #6 on `a69d2d7` (green), installed over
+  1.0.8 with irisin-cli over the real-root path. On-device checks after a Notes restart:
+  `icli prefs read com.apple.mobilenotes NotesReadOnlyDiagnostics` →
+  `v1.0.9;hooks=19;classes=ICTextView,ICBaseTextView,NoteHTMLEditorView,UITextView;menu=bar;…`;
+  opening a note no longer crashes (no new MobileNotes crash report at all), and the toggle was
+  exercised both ways (menu item on/off → `NotesReadOnlyEnabled`/`locked` follow) with editing
+  blocked while read-only is on (no keyboard, system-level `icli input type` does not land) and
+  working again with it off. `hooks=19` is the new per-site count; it is not comparable with
+  1.0.8's 25 (one wrapper per class×selector, installed only where the class declares the method).
+- **1.0.9 fixed a hard crash of 1.0.8**: opening a note killed Notes. 1.0.8 kept one set
   of wrappers plus a shared `(class, selector) → original IMP` table, so when
   `-[ICTextView setEditable:]` did `[super setEditable:]` and landed on the parent's site
   the lookup went by `self`'s class and handed back ICTextView's own "original" — the hook
