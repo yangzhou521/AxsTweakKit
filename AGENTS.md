@@ -29,6 +29,36 @@ is uncompiled and unverified.
 - To drive the script from Apelin, add `"external": {"script": "scripts/build.sh",
   "interpreter": "sh", "arguments": []}` to the manifest, on a machine with a toolchain.
 
+## NotesReadOnly — `com.unknown.notesreadonly` (备忘录只读)
+
+A second product lives in this workspace: a MobileNotes-only tweak (`NotesReadOnly/`)
+plus its cloud build, added because this device has no toolchain (see above).
+
+- Source `NotesReadOnly/Sources/NotesReadOnly.m`, filter `NotesReadOnly/Support/NotesReadOnly.plist`
+  (`Filter/Bundles = com.apple.mobilenotes`), build `.github/workflows/notesreadonly.yml`
+  → `scripts/build-notesreadonly.sh` (same clang + ldid + dpkg-deb shape as `scripts/build.sh`).
+- 1.0.7 (shipped by someone else) was arm64e-only, so A11 never loaded it. **Every
+  roothide build here must carry arm64 as well as arm64e** — 1.0.8 has both.
+- 1.0.8 is built, published and verified on this device (2026-10-29). Release asset:
+  `https://github.com/yangzhou521/AxsTweakKit/releases/download/notesreadonly-v1.0.8/com.unknown.notesreadonly_1.0.8_iphoneos-arm64e.deb`
+  (sha256 `02d39c7a447e10bb55443f2e0686c719ef688ab93a438bd26cf88a58865f829d`).
+- Install from the device only through irisin-cli, and only with the real-root path
+  (`/rootfs/…`); the jbroot spelling is not found:
+  `irisin-cli install --yes --json /rootfs/var/mobile/Documents/<deb>` (as root).
+- Then, and this is the step that is easy to get wrong: **relaunch the target** so the
+  dylib is mapped, then look for the diagnostics the tweak writes on load.
+  `icli app kill com.apple.mobilenotes --force` (kill needs `--force`),
+  `icli app launch com.apple.mobilenotes`, then
+  `icli prefs read com.apple.mobilenotes NotesReadOnlyDiagnostics`. Expected:
+  `v1.0.8;hooks=25;classes=ICTextView,ICBaseTextView,NoteHTMLEditorView,UITextView;menu=item;locked=0`.
+  Missing diagnostics almost always means the process was never restarted, not that the
+  tweak failed to inject. Second channel, same string, inside the Notes container:
+  `Documents/NotesReadOnlyDiagnostics.txt`.
+- UI: in a note the toggle sits in the `•••` menu (`menu=item`); on the folders screen
+  there is no right item carrying a menu, so the fallback appends its own `只读` button
+  (`bar`). The switch is `NotesReadOnlyEnabled`, default `NO`.
+- `icli prefs read <domain> <key>` takes the key positionally (`--key` is rejected).
+
 ## Layout
 
 - `Sources/` — dylib: config snapshot, log + marker, hook skeleton. Filtered to
